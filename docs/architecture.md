@@ -19,11 +19,9 @@ flowchart LR
     B --> C[Dynatrace Logs OTLP endpoint]
     B --> D[Dynatrace Metrics OTLP endpoint]
     B --> E[Dynatrace Traces OTLP endpoint]
-
-    A -. diagnostic bypass .-> C
-    A -. diagnostic bypass .-> D
-    A -. diagnostic bypass .-> E
 ```
+
+Direct path (diagnostic mode) is intentionally not shown in the diagram to keep the architecture view focused on the target managed flow.
 
 ## Managed OTLP destinations
 

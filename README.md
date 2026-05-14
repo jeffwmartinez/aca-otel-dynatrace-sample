@@ -1,7 +1,23 @@
 
 # Azure Container Apps + OpenTelemetry + Dynatrace Sample
 
+## What Is Not Working (Current Status)
+
+- Managed ACA forwarding path is not delivering logs, metrics, or traces to Dynatrace in this environment.
+- Direct app-to-Dynatrace export is working for all three signals.
+- Current conclusion: app instrumentation and Dynatrace ingest are healthy; issue appears isolated to ACA managed forwarding.
+
 This sample shows how to send OpenTelemetry telemetry from a Python app in Azure Container Apps (ACA) to Dynatrace.
+
+## Azure Resources Used
+
+- Subscription resource group: `jefmarti-otel-dynatrace-rg`
+- Container Apps environment: `dynatraceotel-env`
+- Container App: `dynatraceotel-app`
+- Azure Container Registry: `dynatraceotelacr`
+- Log Analytics workspace: `dynatraceotel-logs`
+- Primary region: `northcentralus`
+- Container Apps region: `northcentralusstage`
 
 ## Dynatrace Environment Links
 
@@ -21,10 +37,6 @@ flowchart LR
 	B --> C[Dynatrace OTLP Logs<br/>/api/v2/otlp/v1/logs]
 	B --> D[Dynatrace OTLP Metrics<br/>/api/v2/otlp/v1/metrics]
 	B --> E[Dynatrace OTLP Traces<br/>/api/v2/otlp/v1/traces]
-
-	F[Direct Test Mode<br/>App -> Dynatrace HTTP Exporters] -. used for isolation .-> C
-	F -. used for isolation .-> D
-	F -. used for isolation .-> E
 ```
 
 ## Current Issue (Important)
@@ -64,13 +76,3 @@ This repository does not contain real API tokens.
 - `app/` Python Flask app instrumented with OpenTelemetry SDK
 - `infra/` Bicep templates for ACA environment and OTLP destinations
 - `docs/` Tutorial and architecture notes
-
-## Sharing with Engineering
-
-When sharing this sample, include:
-
-- Managed-mode marker used in testing (for example `ACA_MANAGED_CONFIRM_20260514`)
-- Evidence that direct mode succeeds for all three signals
-- Evidence that managed mode emits app logs but data does not appear in Dynatrace
-
-This gives engineering a reproducible isolation of the forwarding gap.
