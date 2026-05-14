@@ -1,0 +1,248 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "2876556476868599261"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "northcentralus",
+      "metadata": {
+        "description": "Azure region for shared resources such as Log Analytics and ACR."
+      }
+    },
+    "acaLocation": {
+      "type": "string",
+      "defaultValue": "northcentralusstage",
+      "metadata": {
+        "description": "Azure region for the Container Apps environment and app."
+      }
+    },
+    "logAnalyticsName": {
+      "type": "string",
+      "defaultValue": "dynatraceotel-logs",
+      "metadata": {
+        "description": "Name of the Log Analytics workspace."
+      }
+    },
+    "acrName": {
+      "type": "string",
+      "defaultValue": "dynatraceotelacr",
+      "metadata": {
+        "description": "Globally unique name for the Azure Container Registry."
+      }
+    },
+    "acaEnvName": {
+      "type": "string",
+      "defaultValue": "dynatraceotel-env",
+      "metadata": {
+        "description": "Name of the Container Apps environment."
+      }
+    },
+    "appName": {
+      "type": "string",
+      "defaultValue": "dynatraceotel-app",
+      "metadata": {
+        "description": "Name of the Container App."
+      }
+    },
+    "dynatraceEndpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "Base Dynatrace OTLP endpoint, for example https://tenant.live.dynatrace.com/api/v2/otlp."
+      }
+    },
+    "dynatraceApiKey": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Dynatrace ingest token with logs.ingest, metrics.ingest, and openTelemetryTrace.ingest scopes."
+      }
+    }
+  },
+  "variables": {
+    "dynatraceAuthHeader": "[format('Api-Token {0}', parameters('dynatraceApiKey'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2022-10-01",
+      "name": "[parameters('logAnalyticsName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": 30
+      }
+    },
+    {
+      "type": "Microsoft.ContainerRegistry/registries",
+      "apiVersion": "2023-07-01",
+      "name": "[parameters('acrName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Basic"
+      },
+      "properties": {
+        "adminUserEnabled": true
+      }
+    },
+    {
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2026-03-02-preview",
+      "name": "[parameters('acaEnvName')]",
+      "location": "[parameters('acaLocation')]",
+      "properties": {
+        "appLogsConfiguration": {
+          "destination": "log-analytics",
+          "logAnalyticsConfiguration": {
+            "customerId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName')), '2022-10-01').customerId]",
+            "sharedKey": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName')), '2022-10-01').primarySharedKey]"
+          }
+        },
+        "openTelemetryConfiguration": {
+          "destinationsConfiguration": {
+            "otlpConfigurations": [
+              {
+                "name": "dynatrace-logs",
+                "endpoint": "[format('{0}/v1/logs', parameters('dynatraceEndpoint'))]",
+                "insecure": false,
+                "headers": [
+                  {
+                    "key": "Authorization",
+                    "value": "[variables('dynatraceAuthHeader')]"
+                  }
+                ]
+              },
+              {
+                "name": "dynatrace-metrics",
+                "endpoint": "[format('{0}/v1/metrics', parameters('dynatraceEndpoint'))]",
+                "insecure": false,
+                "headers": [
+                  {
+                    "key": "Authorization",
+                    "value": "[variables('dynatraceAuthHeader')]"
+                  }
+                ]
+              },
+              {
+                "name": "dynatrace-traces",
+                "endpoint": "[format('{0}/v1/traces', parameters('dynatraceEndpoint'))]",
+                "insecure": false,
+                "headers": [
+                  {
+                    "key": "Authorization",
+                    "value": "[variables('dynatraceAuthHeader')]"
+                  }
+                ]
+              }
+            ]
+          },
+          "logsConfiguration": {
+            "destinations": [
+              "dynatrace-logs"
+            ]
+          },
+          "metricsConfiguration": {
+            "destinations": [
+              "dynatrace-metrics"
+            ],
+            "includeKeda": false
+          },
+          "tracesConfiguration": {
+            "destinations": [
+              "dynatrace-traces"
+            ],
+            "includeDapr": false
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2023-05-01",
+      "name": "[parameters('appName')]",
+      "location": "[parameters('acaLocation')]",
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('acaEnvName'))]",
+        "configuration": {
+          "ingress": {
+            "external": true,
+            "targetPort": 8080,
+            "transport": "auto",
+            "allowInsecure": false
+          },
+          "registries": [
+            {
+              "server": "[reference(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), '2023-07-01').loginServer]",
+              "username": "[listCredentials(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), '2023-07-01').username]",
+              "passwordSecretRef": "acr-pull-password"
+            }
+          ],
+          "secrets": [
+            {
+              "name": "acr-pull-password",
+              "value": "[listCredentials(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), '2023-07-01').passwords[0].value]"
+            }
+          ]
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "[parameters('appName')]",
+              "image": "[format('{0}/{1}:latest', reference(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), '2023-07-01').loginServer, parameters('appName'))]",
+              "resources": {
+                "cpu": "[json('0.5')]",
+                "memory": "1Gi"
+              },
+              "env": [
+                {
+                  "name": "OTEL_SERVICE_NAME",
+                  "value": "[parameters('appName')]"
+                },
+                {
+                  "name": "OTEL_TRACES_EXPORTER",
+                  "value": "otlp"
+                },
+                {
+                  "name": "OTEL_METRICS_EXPORTER",
+                  "value": "otlp"
+                },
+                {
+                  "name": "OTEL_LOGS_EXPORTER",
+                  "value": "otlp"
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 2
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.App/managedEnvironments', parameters('acaEnvName'))]",
+        "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "containerAppUrl": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', parameters('appName')), '2023-05-01').configuration.ingress.fqdn)]"
+    },
+    "containerRegistryLoginServer": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), '2023-07-01').loginServer]"
+    }
+  }
+}

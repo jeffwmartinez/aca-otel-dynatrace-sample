@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "northcentralus" },
+    "acaLocation": { "value": "northcentralusstage" },
+    "logAnalyticsName": { "value": "dynatraceotel-logs" },
+    "acrName": { "value": "dynatraceotelacr" },
+    "acaEnvName": { "value": "dynatraceotel-env" },
+    "appName": { "value": "dynatraceotel-app" },
+    "dynatraceEndpoint": { "value": "https://{your-dynatrace-endpoint}/api/v2/otlp" },
+    "dynatraceApiKey": { "value": "<YOUR_DYNATRACE_API_KEY>" }
+  }
+}

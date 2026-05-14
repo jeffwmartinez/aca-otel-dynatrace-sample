@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+
+# Local secrets and overrides
+*.env
+*.local
+infra/*private*.json
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
