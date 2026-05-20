@@ -38,32 +38,8 @@ var managedEnvironmentProperties = {
     destinationsConfiguration: {
       otlpConfigurations: [
         {
-          name: 'dynatrace-logs'
-          endpoint: '${dynatraceEndpoint}/v1/logs'
-          protocol: 'http'
-          insecure: false
-          headers: [
-            {
-              key: 'Authorization'
-              value: dynatraceAuthHeader
-            }
-          ]
-        }
-        {
-          name: 'dynatrace-metrics'
-          endpoint: '${dynatraceEndpoint}/v1/metrics'
-          protocol: 'http'
-          insecure: false
-          headers: [
-            {
-              key: 'Authorization'
-              value: dynatraceAuthHeader
-            }
-          ]
-        }
-        {
-          name: 'dynatrace-traces'
-          endpoint: '${dynatraceEndpoint}/v1/traces'
+          name: 'dynatrace-otlp-r2'
+          endpoint: dynatraceEndpoint
           protocol: 'http'
           insecure: false
           headers: [
@@ -77,18 +53,18 @@ var managedEnvironmentProperties = {
     }
     logsConfiguration: {
       destinations: [
-        'dynatrace-logs'
+        'dynatrace-otlp-r2'
       ]
     }
     metricsConfiguration: {
       destinations: [
-        'dynatrace-metrics'
+        'dynatrace-otlp-r2'
       ]
       includeKeda: false
     }
     tracesConfiguration: {
       destinations: [
-        'dynatrace-traces'
+        'dynatrace-otlp-r2'
       ]
       includeDapr: false
     }
@@ -147,6 +123,10 @@ resource app 'Microsoft.App/containerApps@2023-05-01' = {
           name: 'acr-pull-password'
           value: acr.listCredentials().passwords[0].value
         }
+        {
+          name: 'dynatrace-api-key'
+          value: dynatraceApiKey
+        }
       ]
     }
     template: {
@@ -174,6 +154,18 @@ resource app 'Microsoft.App/containerApps@2023-05-01' = {
             {
               name: 'OTEL_LOGS_EXPORTER'
               value: 'otlp'
+            }
+            {
+              name: 'OTEL_EXPORTER_OTLP_METRICS_PROTOCOL'
+              value: 'http/protobuf'
+            }
+            {
+              name: 'OTEL_EXPORTER_OTLP_METRICS_ENDPOINT'
+              value: '${dynatraceEndpoint}/v1/metrics'
+            }
+            {
+              name: 'DYNATRACE_API_TOKEN'
+              secretRef: 'dynatrace-api-key'
             }
           ]
         }

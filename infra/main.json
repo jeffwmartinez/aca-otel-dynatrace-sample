@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "2876556476868599261"
+      "templateHash": "4548235501159564006"
     }
   },
   "parameters": {
@@ -109,30 +109,9 @@
           "destinationsConfiguration": {
             "otlpConfigurations": [
               {
-                "name": "dynatrace-logs",
-                "endpoint": "[format('{0}/v1/logs', parameters('dynatraceEndpoint'))]",
-                "insecure": false,
-                "headers": [
-                  {
-                    "key": "Authorization",
-                    "value": "[variables('dynatraceAuthHeader')]"
-                  }
-                ]
-              },
-              {
-                "name": "dynatrace-metrics",
-                "endpoint": "[format('{0}/v1/metrics', parameters('dynatraceEndpoint'))]",
-                "insecure": false,
-                "headers": [
-                  {
-                    "key": "Authorization",
-                    "value": "[variables('dynatraceAuthHeader')]"
-                  }
-                ]
-              },
-              {
-                "name": "dynatrace-traces",
-                "endpoint": "[format('{0}/v1/traces', parameters('dynatraceEndpoint'))]",
+                "name": "dynatrace-otlp-r2",
+                "endpoint": "[parameters('dynatraceEndpoint')]",
+                "protocol": "http",
                 "insecure": false,
                 "headers": [
                   {
@@ -145,18 +124,12 @@
           },
           "logsConfiguration": {
             "destinations": [
-              "dynatrace-logs"
+              "dynatrace-otlp-r2"
             ]
-          },
-          "metricsConfiguration": {
-            "destinations": [
-              "dynatrace-metrics"
-            ],
-            "includeKeda": false
           },
           "tracesConfiguration": {
             "destinations": [
-              "dynatrace-traces"
+              "dynatrace-otlp-r2"
             ],
             "includeDapr": false
           }
@@ -191,6 +164,10 @@
             {
               "name": "acr-pull-password",
               "value": "[listCredentials(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), '2023-07-01').passwords[0].value]"
+            },
+            {
+              "name": "dynatrace-api-key",
+              "value": "[parameters('dynatraceApiKey')]"
             }
           ]
         },
@@ -219,6 +196,18 @@
                 {
                   "name": "OTEL_LOGS_EXPORTER",
                   "value": "otlp"
+                },
+                {
+                  "name": "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL",
+                  "value": "http/protobuf"
+                },
+                {
+                  "name": "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+                  "value": "[format('{0}/v1/metrics', parameters('dynatraceEndpoint'))]"
+                },
+                {
+                  "name": "DYNATRACE_API_TOKEN",
+                  "secretRef": "dynatrace-api-key"
                 }
               ]
             }

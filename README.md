@@ -3,9 +3,10 @@
 
 ## What Is Not Working (Current Status)
 
-- Managed ACA forwarding path is not delivering logs, metrics, or traces to Dynatrace in this environment.
-- Direct app-to-Dynatrace export is working for all three signals.
-- Current conclusion: app instrumentation and Dynatrace ingest are healthy; issue appears isolated to ACA managed forwarding.
+- Managed ACA metrics forwarding fails in this environment.
+- Root cause from `ContainerAppSystemLogs_CL`: Dynatrace returns HTTP 400 because metric `newrelicflask.requests` is rejected as `UNSUPPORTED_METRIC_TYPE_MONOTONIC_CUMULATIVE_SUM`.
+- Because the managed exporter batch is rejected, metrics are dropped before they reach Dynatrace.
+- Logs and traces can still be forwarded via managed ACA.
 
 This sample shows how to send OpenTelemetry telemetry from a Python app in Azure Container Apps (ACA) to Dynatrace.
 
@@ -44,7 +45,12 @@ flowchart LR
 Current validation status:
 
 - Direct app-to-Dynatrace mode: validated for logs, metrics, and traces.
-- Managed ACA forwarding mode: app emits telemetry, but the same marker is not visible in Dynatrace.
+- Managed ACA metrics forwarding mode: app emits telemetry, but managed metric export is rejected by Dynatrace for an unsupported metric.
+
+Current workaround in `infra/main.bicep`:
+
+- Keep managed ACA forwarding for logs and traces.
+- Export metrics directly from the app to Dynatrace OTLP `/v1/metrics` using `OTEL_EXPORTER_OTLP_METRICS_*` env vars.
 
 Conclusion so far: app instrumentation and Dynatrace ingestion are working; issue appears isolated to managed ACA forwarding in this environment.
 

@@ -16,15 +16,18 @@ from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExp
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as OTLPSpanExporterHTTP
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.metrics import Counter, Histogram, ObservableCounter, ObservableGauge, ObservableUpDownCounter, UpDownCounter
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.export import AggregationTemporality, PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.view import View
+from opentelemetry.sdk.metrics.aggregation import SumAggregation
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-# Let ACA managed OpenTelemetry inject protocol/endpoint for local ingest.
+# ACA managed OpenTelemetry agent (localhost:4317 gRPC)
 OTEL_ENDPOINT = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
-OTEL_PROTOCOL = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
+
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "test")
 PROOF_MARKER = os.environ.get("PROOF_MARKER", "ACA_PROOF_20260513_01")
 PORT = int(os.environ.get("PORT", "8080"))
@@ -39,9 +42,6 @@ resource = Resource.create(
 
 # Log startup config immediately to stdout so it appears in ACA logs
 print(f"[STARTUP] OTEL_ENDPOINT={OTEL_ENDPOINT}", flush=True)
-print(f"[STARTUP] OTEL_PROTOCOL={OTEL_PROTOCOL}", flush=True)
-_headers_raw = os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", "")
-print(f"[STARTUP] OTEL_HEADERS_SET={'yes' if _headers_raw else 'NO - MISSING'}", flush=True)
 print(f"[STARTUP] PROOF_MARKER={PROOF_MARKER}", flush=True)
 
 # Enable OTEL SDK internal debug logging so export failures appear in logs
@@ -52,27 +52,26 @@ _stdlib_logging.getLogger("opentelemetry.sdk.trace.export").setLevel(_stdlib_log
 _stdlib_logging.getLogger("opentelemetry.sdk._logs.export").setLevel(_stdlib_logging.DEBUG)
 _stdlib_logging.getLogger("opentelemetry.sdk.metrics.export").setLevel(_stdlib_logging.DEBUG)
 
-# Select exporter implementation based on protocol
-# grpc: used when sending to managed agent (localhost:4317)
-# http/protobuf: used when sending directly to Dynatrace OTLP endpoints
-if OTEL_PROTOCOL == "http/protobuf":
-    # HTTP exporters read OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_EXPORTER_OTLP_HEADERS
-    # from env vars automatically and append /v1/logs|metrics|traces to the base URL.
-    # Do NOT pass endpoint= here — passing it bypasses the path-append logic.
-    print(f"[STARTUP] Using HTTP exporters via env vars", flush=True)
-    log_exporter = OTLPLogExporterHTTP()
-    span_exporter = OTLPSpanExporterHTTP()
-    metric_exporter = OTLPMetricExporterHTTP()
-    print(f"[STARTUP] Log exporter endpoint: {log_exporter._endpoint}", flush=True)
-    print(f"[STARTUP] Span exporter endpoint: {span_exporter._endpoint}", flush=True)
-    print(f"[STARTUP] Metric exporter endpoint: {metric_exporter._endpoint}", flush=True)
-else:
-    exporter_kwargs = {"endpoint": OTEL_ENDPOINT}
-    if OTEL_ENDPOINT.startswith("http://"):
-        exporter_kwargs["insecure"] = True
-    log_exporter = OTLPLogExporterGRPC(**exporter_kwargs)
-    span_exporter = OTLPSpanExporterGRPC(**exporter_kwargs)
-    metric_exporter = OTLPMetricExporterGRPC(**exporter_kwargs)
+# All telemetry goes to the ACA managed OTel agent via gRPC.
+# preferred_temporality on the metric exporter tells the OTel SDK to produce
+# delta aggregations - the Python equivalent of the .NET MetricReaderTemporalityPreference.Delta.
+DELTA_TEMPORALITY = {
+    Counter: AggregationTemporality.DELTA,
+    UpDownCounter: AggregationTemporality.CUMULATIVE,
+    Histogram: AggregationTemporality.DELTA,
+    ObservableCounter: AggregationTemporality.DELTA,
+    ObservableUpDownCounter: AggregationTemporality.CUMULATIVE,
+    ObservableGauge: AggregationTemporality.CUMULATIVE,
+}
+
+log_exporter = OTLPLogExporterGRPC(endpoint=OTEL_ENDPOINT, insecure=True)
+span_exporter = OTLPSpanExporterGRPC(endpoint=OTEL_ENDPOINT, insecure=True)
+metric_exporter = OTLPMetricExporterGRPC(
+    endpoint=OTEL_ENDPOINT,
+    insecure=True,
+    preferred_temporality=DELTA_TEMPORALITY,
+)
+print(f"[STARTUP] Metric exporter: gRPC to managed agent with DELTA temporality", flush=True)
 
 # Logs pipeline (short batch timeout to force immediate export)
 log_provider = LoggerProvider(resource=resource)
@@ -97,7 +96,7 @@ metric_reader = PeriodicExportingMetricReader(metric_exporter, export_interval_m
 meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
 metrics.set_meter_provider(meter_provider)
 meter = metrics.get_meter("aca-otel-dynatrace-app")
-request_counter = meter.create_counter("aca_otel.requests", description="Total HTTP requests")
+request_counter = meter.create_counter("dynatraceotel.requests", description="Total HTTP requests")
 
 shutdown = threading.Event()
 app = Flask(__name__)
